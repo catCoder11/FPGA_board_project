@@ -1,0 +1,44 @@
+services:
+  backend:
+    build:
+      context: ./backend
+      target: dev
+      args:
+        PYTHON_VERSION: ${PYTHON_VERSION}
+    # Автоперезапуск при изменении кода, только для разработки
+    command: uvicorn app.main:app --host ${APP_HOST} --port ${APP_PORT} --reload
+    ports:
+      - "${WEB_PORT}:${APP_PORT}"
+    environment:
+      APP_HOST: ${APP_HOST}
+      APP_PORT: ${APP_PORT}
+      # "db" - имя сервиса ниже, внутри сети compose оно работает как адрес хоста
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:${POSTGRES_PORT}/${POSTGRES_DB}
+      SMOKE_BASE_URL: http://backend:${APP_PORT}
+    volumes:
+      # Код с компьютера виден в контейнере, пересобирать образ после правок не нужно
+      - ./backend/app:/code/app
+      - ./backend/tests:/code/tests
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    image: postgres:${POSTGRES_VERSION}
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      # По этой переменной порт выбирают и сервер PostgreSQL, и pg_isready
+      PGPORT: ${POSTGRES_PORT}
+    volumes:
+      # Данные БД переживают пересоздание контейнера
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: ${DB_HEALTHCHECK_INTERVAL}
+      timeout: ${DB_HEALTHCHECK_TIMEOUT}
+      retries: ${DB_HEALTHCHECK_RETRIES}
+
+volumes:
+  postgres_data:

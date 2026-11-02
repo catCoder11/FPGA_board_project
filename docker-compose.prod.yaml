@@ -1,0 +1,22 @@
+# Настройки для сайта, дополняют docker-compose.yaml. Запуск:
+# docker compose -f docker-compose.yaml -f docker-compose.prod.yaml up -d --build
+
+services:
+  backend:
+    build: !override
+      context: ./backend
+      target: prod
+      args:
+        PYTHON_VERSION: ${PYTHON_VERSION}
+    # Убираем --reload: будет использована команда из образа
+    command: !reset null
+    # Снаружи порт закрыт, backend доступен только другим контейнерам этого проекта
+    ports: !reset []
+    expose:
+      - "${APP_PORT}"
+    # Код уже внутри образа, папки с компьютера не подключаем
+    volumes: !reset []
+    restart: unless-stopped
+
+  db:
+    restart: unless-stopped
