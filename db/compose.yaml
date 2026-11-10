@@ -1,0 +1,22 @@
+# Сервис миграций БД. Подключается в корневой docker-compose.yaml через include.
+# Запускается при `docker compose up`, применяет новые миграции и завершается,
+# backend стартует только после его успешного завершения.
+services:
+  migrate:
+    build:
+      context: .
+      args:
+        PYTHON_VERSION: ${PYTHON_VERSION}
+    environment:
+      # Адрес собирается в migrations/env.py, чтобы спецсимволы в пароле не ломали URL
+      POSTGRES_HOST: db
+      POSTGRES_PORT: ${POSTGRES_PORT}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      # Новые миграции видны без пересборки образа
+      - ./migrations:/migrations/migrations
+    depends_on:
+      db:
+        condition: service_healthy
