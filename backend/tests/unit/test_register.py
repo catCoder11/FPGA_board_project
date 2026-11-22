@@ -70,3 +70,4 @@ def test_register_duplicate(monkeypatch):
 def test_register_db_down(monkeypatch):
     monkeypatch.setattr(auth, "connect", lambda: FakeConn(psycopg.OperationalError("down")))
     assert client.post("/register", json=VALID).status_code == 503
+
