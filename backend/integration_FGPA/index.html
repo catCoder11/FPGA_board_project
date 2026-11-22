@@ -1,0 +1,25 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Прошивка ПЛИС</title>
+<h2>Прошивка ПЛИС</h2>
+<button onclick="check()">Проверить программатор</button>
+<hr>
+<input type="file" id="f" accept=".sof">
+<button onclick="flash()">Прошить</button>
+<pre id="out"></pre>
+<script>
+async function check() {
+  out.textContent = 'Проверяю...';
+  const j = await (await fetch('/check')).json();
+  out.textContent = (j.ok ? 'ПРОГРАММАТОР ВИДЕН' : 'ПРОГРАММАТОР НЕ НАЙДЕН') + '\n\n' + j.output;
+}
+
+async function flash() {
+  if (!f.files[0]) { out.textContent = 'Выберите файл'; return; }
+  const fd = new FormData();
+  fd.append('file', f.files[0]);
+  out.textContent = 'Прошиваю...';
+  const j = await (await fetch('/flash', {method: 'POST', body: fd})).json();
+  out.textContent = (j.ok ? 'УСПЕХ' : 'ОШИБКА') + '\n\n' + j.output;
+}
+</script>
