@@ -5,9 +5,11 @@
 <button onclick="check()">Проверить программатор</button>
 <hr>
 <input type="file" id="f" accept=".sof">
-<button onclick="flash()">Прошить</button>
+<button id="go" onclick="flash()">Прошить</button>
 <pre id="out"></pre>
 <script>
+let flashing = false;
+
 async function check() {
   out.textContent = 'Проверяю...';
   const j = await (await fetch('/check')).json();
@@ -18,8 +20,27 @@ async function flash() {
   if (!f.files[0]) { out.textContent = 'Выберите файл'; return; }
   const fd = new FormData();
   fd.append('file', f.files[0]);
+  flashing = true;
+  go.disabled = true;
   out.textContent = 'Прошиваю...';
-  const j = await (await fetch('/flash', {method: 'POST', body: fd})).json();
-  out.textContent = (j.ok ? 'УСПЕХ' : 'ОШИБКА') + '\n\n' + j.output;
+  try {
+    const j = await (await fetch('/flash', {method: 'POST', body: fd})).json();
+    out.textContent = (j.ok ? 'УСПЕХ' : 'ОШИБКА') + '\n\n' + j.output;
+  } catch (e) {
+    out.textContent = 'Нет связи с сервером';
+  }
+  flashing = false;
+  updateBusy();
 }
+
+async function updateBusy() {
+  try {
+    const j = await (await fetch('/status')).json();
+    go.disabled = j.busy || flashing;
+    go.textContent = j.busy ? 'Плата занята...' : 'Прошить';
+  } catch (e) {}
+}
+
+setInterval(updateBusy, 1000);
+updateBusy();
 </script>
