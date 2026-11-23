@@ -1,0 +1,10 @@
+services:
+  agent:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    # Порты не публикуются: агент только отправляет запросы на сервер.
+    devices:
+      - /dev/bus/usb:/dev/bus/usb      # USB-Blaster
+    volumes:
+      - ${QUARTUS_DIR}:${QUARTUS_DIR}:ro   # Quartus с хоста, только чтение
