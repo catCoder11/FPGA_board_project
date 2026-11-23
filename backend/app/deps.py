@@ -1,5 +1,6 @@
 import logging
 from dataclasses import dataclass
+from datetime import datetime
 
 import psycopg
 from fastapi import Depends, HTTPException, status
@@ -58,3 +59,36 @@ def get_current_user(
         # Токена нет, он просрочен, пользователь отключён — снаружи это неразличимо
         raise _unauthorized()
     return CurrentUser(user_id=row[0], login=row[1], token_hash=token_hash)
+
+
+@dataclass
+class ActiveBoardSession:
+    board_session_id: int
+    board_id: int
+    board_code: str
+    expires_at: datetime
+    seconds_left: int
+
+
+def get_board_session(user: CurrentUser = Depends(get_current_user)) -> ActiveBoardSession:
+    """Пользователь вошёл И сейчас подключён к плате (срок сессии не истёк).
+
+    Подключается к эндпоинтам «работы с платой» (прошивка, камера): так
+    нельзя прошить плату, которую пользователь не занимал или время которой вышло.
+    """
+    try:
+        with connect() as conn:
+            row = conn.execute(
+                "SELECT bs.board_session_id, bs.board_id, b.board_code, bs.expires_at, "
+                "EXTRACT(EPOCH FROM (bs.expires_at - now()))::int "
+                "FROM board_sessions bs JOIN boards b ON b.board_id = bs.board_id "
+                "WHERE bs.user_id = %s AND bs.expires_at > now() AND b.is_enabled",
+                (user.user_id,),
+            ).fetchone()
+    except psycopg.Error:
+        log.exception("Ошибка БД при проверке сессии платы")
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "База данных недоступна")
+
+    if row is None:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Сначала подключитесь к плате")
+    return ActiveBoardSession(*row)
