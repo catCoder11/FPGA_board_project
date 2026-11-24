@@ -26,6 +26,7 @@ from fastapi.responses import JSONResponse
 from starlette.datastructures import UploadFile
 
 from app.db import connect
+from app.deps import CurrentUser
 from app.routes.files import verify_session
 
 
@@ -50,13 +51,8 @@ def load_hosts() -> dict[str, dict]:
 
 # ---------- Depends ----------
 
-def get_board_session(b_session_id: str | None = Header(None, alias="B-Session-Id")) -> dict:
-    """Id сессии подключения (не токен) -> плата из БД.
-
-    Предполагаемая схема (подставьте свои имена):
-      board_sessions(id, board_id, expires_at)
-      boards(id, board_code, is_available)
-    """
+def get_board_session(b_session_id: int | None = Header(None, alias="B-Session-Id", ge=1, le=2_147_483_647)) -> dict:
+    """Возвращает плату активной сессии подключения."""
     if not b_session_id:
         raise HTTPException(401, "Нет id сессии подключения")
     with connect() as conn:
@@ -84,6 +80,7 @@ def get_target(board: dict = Depends(get_board_session)) -> dict:
         raise HTTPException(503, "Плата сейчас недоступна")
     return {
         "board_id": board["id"],
+        "board_session_id": board["board_session_id"],
         "board_code": board["board_code"],
         "url": host["board_url"].rstrip("/"),
         "token": host["board_token"],
@@ -146,7 +143,7 @@ async def send_to_board(target: dict, file: UploadFile) -> JSONResponse:
         }
     },
 )
-async def create_job(request: Request, session_hash: str = Depends(verify_session),
+async def create_job(request: Request, user: CurrentUser = Depends(verify_session),
                      target: dict = Depends(get_target)):
     form = await request.form()
     try:
@@ -163,7 +160,7 @@ async def create_job(request: Request, session_hash: str = Depends(verify_sessio
         await form.close()   # удаляет временные файлы загрузки
 
 def change_job_status(
-    board_session_id: str,
+    board_session_id: int,
     status_id: int,
     error_message: str | None = None,
 ) -> None:
@@ -188,7 +185,7 @@ ABORT_TIMEOUT = float(os.environ.get("ABORT_TIMEOUT", "10"))   # abort долж�
 
 
 @router.post("/abort")
-async def abort_job(session_hash: str = Depends(verify_session),
+async def abort_job(user: CurrentUser = Depends(verify_session),
                     target: dict = Depends(get_target)):
     try:
         async with httpx.AsyncClient(timeout=httpx.Timeout(ABORT_TIMEOUT, connect=5.0)) as client:
@@ -211,12 +208,12 @@ async def abort_job(session_hash: str = Depends(verify_session),
     return JSONResponse(status_code=resp.status_code, content=content)
 
 @router.get("/jobs/status")
-def get_job_status(session_hash: str = Depends(verify_session),
+def get_job_status(user: CurrentUser = Depends(verify_session),
                    target: dict = Depends(get_target)):
     with connect() as conn:
         row = conn.execute(
-            "SELECT j.job_id, j.status_id, s.name, j.error_message "
-            "FROM jobs j JOIN job_statuses s ON s.id = j.status_id "
+            "SELECT j.job_id, j.status_id, s.status_name, j.error_message "
+            "FROM jobs j LEFT JOIN statuses s ON s.status_id = j.status_id "
             "WHERE j.board_session_id = %s "
             "LIMIT 1",
             (target["board_session_id"],),
@@ -261,18 +258,8 @@ def delete_board_session(conn, session_id: int) -> None:
     conn.execute("DELETE FROM board_sessions WHERE board_session_id = %s", (session_id,))
 
 
-def get_site_user_id(session_hash: str = Depends(verify_session)) -> int:
-    with connect() as conn:
-        row = conn.execute(
-            """SELECT u.user_id FROM user_sessions s
-               JOIN users u ON u.user_id = s.user_id
-               WHERE encode(s.token_hash, 'hex') = lower(%s)
-                 AND s.expires_at > now() AND u.is_active""",
-            (session_hash,),
-        ).fetchone()
-    if row is None:
-        raise HTTPException(401, "Сессия пользователя недействительна")
-    return row[0]
+def get_site_user_id(user: CurrentUser = Depends(verify_session)) -> int:
+    return user.user_id
 
 
 def refresh_board_session(

@@ -1,13 +1,10 @@
 import os
 
 import httpx
-import psycopg
-from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
-from fastapi.concurrency import run_in_threadpool
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from starlette.datastructures import UploadFile
 
-from app.db import connect
-from app.deps import CurrentUser, get_current_user
+from app.deps import ActiveBoardSession, CurrentUser, get_board_session, get_current_user
 
 router = APIRouter()
 BOARD_AGENT_URL = os.environ.get('BOARD_AGENT_URL', '').rstrip('/')
@@ -27,29 +24,9 @@ MULTIPART_OVERHEAD = 64 * 1024
 async def login():
     pass
 
-def _check_session_sync(session_hash: str) -> bool:
-    # Предполагаемая схема: sessions(session_hash text, expires_at timestamptz)
-    with connect() as conn:
-        row = conn.execute(
-            "SELECT 1 FROM sessions WHERE session_hash = %s AND expires_at > now()",
-            (session_hash,),
-        ).fetchone()
-    return row is not None
-
-
-async def verify_session(
-        x_session_id: str | None = Header(None, alias="X-Session-Id"),
-) -> str:
-    """Принимает хэшированный id сессии, сверяет с БД. 401 если не найден/истёк."""
-    if not x_session_id or len(x_session_id) > 128:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Недействительная сессия")
-    try:
-        valid = await run_in_threadpool(_check_session_sync, x_session_id)
-    except psycopg.Error:
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="База данных недоступна")
-    if not valid:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Недействительная сессия")
-    return x_session_id
+def verify_session(user: CurrentUser = Depends(get_current_user)) -> CurrentUser:
+    """Проверяет токен через общий источник сессий сайта."""
+    return user
 
 
 # Файл не объявлен как параметр File(...) намеренно: иначе FastAPI разбирает
@@ -72,7 +49,11 @@ async def verify_session(
         }
     },
 )
-async def send_file(request: Request, session_hash: str = Depends(verify_session)) -> dict:
+async def send_file(
+    request: Request, session: ActiveBoardSession = Depends(get_board_session),
+) -> dict:
+    if session.board_id != BOARD_ID:
+        raise HTTPException(status_code=403, detail="Сессия не относится к плате этого маршрута")
     if not BOARD_AGENT_URL or not BOARD_AGENT_TOKEN:
         raise HTTPException(status_code=503, detail="Подключение к агенту ПЛИС не настроено")
 

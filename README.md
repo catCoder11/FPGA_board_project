@@ -48,7 +48,8 @@ PostgreSQL, миграции Alembic и backend входят в серверны
 
 `POST /board/sessions/{board_code}` открывает сессию, а
 `DELETE /board/sessions/{board_code}` закрывает свою сессию. Оба запроса
-используют `X-Session-Id`. Обращения к API платы с её `B-Session-Id` продлевают
+принимают токен входа в `Authorization: Bearer <access_token>` или в
+`X-Session-Id`. Обращения к API платы с её `B-Session-Id` продлевают
 сессию на час. Просроченные сессии удаляются фоновой задачей.
 
 ## Регистрация, вход и список плат

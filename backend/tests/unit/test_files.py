@@ -15,7 +15,7 @@ client = TestClient(app)
 def configured_agent(monkeypatch):
     monkeypatch.setattr(files, "BOARD_AGENT_URL", "http://board.test:9000")
     monkeypatch.setattr(files, "BOARD_AGENT_TOKEN", "test-agent-token")
-    monkeypatch.setitem(app.dependency_overrides, files.verify_session, lambda: "test-session")
+    monkeypatch.setitem(app.dependency_overrides, files.get_board_session, lambda: SimpleNamespace(board_id=files.BOARD_ID))
 
 
 def upload(name="design.sof", content=b"binary-data"):
@@ -24,6 +24,14 @@ def upload(name="design.sof", content=b"binary-data"):
 
 def test_send_file_requires_login():
     assert upload().status_code == 401
+
+
+def test_send_file_rejects_another_board(configured_agent, monkeypatch):
+    monkeypatch.setitem(
+        app.dependency_overrides, files.get_board_session,
+        lambda: SimpleNamespace(board_id=files.BOARD_ID + 1),
+    )
+    assert upload().status_code == 403
 
 
 def test_send_file_rejects_wrong_extension(configured_agent):

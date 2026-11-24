@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from datetime import datetime
 
 import psycopg
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, Header, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from app.db import connect
@@ -33,16 +33,18 @@ def _unauthorized() -> HTTPException:
 
 def get_current_user(
     creds: HTTPAuthorizationCredentials | None = Depends(bearer),
+    x_session_id: str | None = Header(None, alias="X-Session-Id"),
 ) -> CurrentUser:
     """Проверяет заголовок `Authorization: Bearer <токен>` и возвращает пользователя.
 
     Подключается к любому эндпоинту, который доступен только после входа:
     `user: CurrentUser = Depends(get_current_user)`.
     """
-    if creds is None or not creds.credentials or len(creds.credentials) > MAX_TOKEN_LENGTH:
+    token = creds.credentials if creds is not None else x_session_id
+    if not token or len(token) > MAX_TOKEN_LENGTH:
         raise _unauthorized()
 
-    token_hash = hash_token(creds.credentials)
+    token_hash = hash_token(token)
     try:
         with connect() as conn:
             row = conn.execute(
@@ -82,7 +84,7 @@ def get_board_session(user: CurrentUser = Depends(get_current_user)) -> ActiveBo
                 "SELECT bs.board_session_id, bs.board_id, b.board_code, bs.expires_at, "
                 "EXTRACT(EPOCH FROM (bs.expires_at - now()))::int "
                 "FROM board_sessions bs JOIN boards b ON b.board_id = bs.board_id "
-                "WHERE bs.user_id = %s AND bs.expires_at > now() AND b.is_enabled",
+                "WHERE bs.user_id = %s AND bs.expires_at > now() AND b.is_enabled AND b.is_available",
                 (user.user_id,),
             ).fetchone()
     except psycopg.Error:
