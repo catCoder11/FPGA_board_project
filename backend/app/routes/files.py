@@ -7,6 +7,7 @@ from fastapi.concurrency import run_in_threadpool
 from starlette.datastructures import UploadFile
 
 from app.db import connect
+from app.deps import CurrentUser, get_current_user
 
 router = APIRouter()
 BOARD_AGENT_URL = os.environ.get('BOARD_AGENT_URL', '').rstrip('/')
@@ -125,3 +126,11 @@ async def send_file(request: Request, session_hash: str = Depends(verify_session
         raise HTTPException(status_code=502, detail=f"BOARD_AGENT вернул ошибку {resp.status_code}")
 
     return {"filename": filename, "size_bytes": size, "board_id": BOARD_ID, "status": "Отправлен на плату" }
+
+
+@router.get("/results")
+async def get_results(
+    offset: int = 0, limit: int = -1, user: CurrentUser = Depends(get_current_user)
+) -> None:
+    """Зарезервированный маршрут для результатов прошивки."""
+    return None

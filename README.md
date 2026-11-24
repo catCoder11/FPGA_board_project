@@ -50,3 +50,14 @@ PostgreSQL, миграции Alembic и backend входят в серверны
 `DELETE /board/sessions/{board_code}` закрывает свою сессию. Оба запроса
 используют `X-Session-Id`. Обращения к API платы с её `B-Session-Id` продлевают
 сессию на час. Просроченные сессии удаляются фоновой задачей.
+
+## Регистрация, вход и список плат
+
+`POST /register` принимает JSON с полями `login` и `password`.
+`POST /login` принимает те же поля и возвращает `access_token`.
+Передайте его как `Authorization: Bearer <access_token>` при вызове `GET /boards`.
+
+Без параметров `GET /boards` возвращает все платы, зарегистрированные в БД.
+Поле `enabled` берётся из `is_enabled` в `hosts.json`. Для платы без записи в
+файле оно равно `false`. Поле `is_available` берётся из БД. Для постраничного
+запроса можно передать `offset` и `limit`.
