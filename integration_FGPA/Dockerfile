@@ -5,9 +5,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# Зависимостей нет: main.py использует только стандартную библиотеку.
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 COPY main.py .
 
-# Quartus в образ не кладём: каталог с ним монтируется с хоста (см. docker-compose.yml).
+# Quartus в образ не кладём: каталог с ним монтируется с хоста (см. docker-compose.yaml).
 # Работаем от root: так проще получить доступ к USB-устройству программатора.
 CMD ["python", "-u", "main.py"]

@@ -2,9 +2,14 @@ services:
   agent:
     build: .
     restart: unless-stopped
-    env_file: .env
-    # Порты не публикуются: агент только отправляет запросы на сервер.
+    environment:
+      AGENT_TOKEN: ${AGENT_TOKEN:?Укажите токен агента}
+      AGENT_PORT: ${AGENT_PORT:-9000}
+      QUARTUS_PGM: ${QUARTUS_PGM:?Укажите путь до quartus_pgm}
+      CABLE: ${CABLE:-}
+    ports:
+      - "${AGENT_PORT:-9000}:${AGENT_PORT:-9000}"
     devices:
-      - /dev/bus/usb:/dev/bus/usb      # USB-Blaster
+      - /dev/bus/usb:/dev/bus/usb
     volumes:
-      - ${QUARTUS_DIR}:${QUARTUS_DIR}:ro   # Quartus с хоста, только чтение
+      - "${QUARTUS_DIR:?Укажите каталог Quartus}:${QUARTUS_DIR}:ro"

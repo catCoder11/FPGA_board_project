@@ -1,31 +1,24 @@
 import os
-import uuid
-import psycopg
-from fastapi import APIRouter
-from fastapi import FastAPI, File, Form, Header, Path, UploadFile, HTTPException, status, Request, Depends
-from fastapi.concurrency import run_in_threadpool
-import json
-import os
-from functools import lru_cache
-from pathlib import Path
+
 import httpx
-from fastapi.responses import JSONResponse
-from starlette.datastructures import UploadFile   # именно starlette: form() отдаёт его, а не fastapi.UploadFile
-from db import connect
+import psycopg
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
+from fastapi.concurrency import run_in_threadpool
+from starlette.datastructures import UploadFile
+
+from app.db import connect
 
 router = APIRouter()
-BOARD_AGENT_URL='http://192.168.1.50:9000'
-BOARD_AGENT_TOKEN='change-me'
-BOARD_AGENT_CONNECT_TIMEOUT=5
-BOARD_AGENT_READ_TIMEOUT=60
+BOARD_AGENT_URL = os.environ.get('BOARD_AGENT_URL', '').rstrip('/')
+BOARD_AGENT_TOKEN = os.environ.get('BOARD_AGENT_TOKEN', '')
+BOARD_AGENT_CONNECT_TIMEOUT = 5
+BOARD_AGENT_READ_TIMEOUT = 150
 # Идентификатор (для логов и будущей таблицы boards)
 BOARD_ID=1
 # Ограничение, чтобы не отправлять лишнего
 UPLOAD_MAX_SIZE_MB=50
 MAX_FILE_SIZE = UPLOAD_MAX_SIZE_MB * 1024 * 1024
-CHUNK_SIZE = 1024 * 1024
 ALLOWED_EXTENSION = ".sof"
-DATABASE_URL = os.environ.get("DATABASE_URL", "")
 # Запас на multipart-заголовки и boundary поверх самого файла
 MULTIPART_OVERHEAD = 64 * 1024
 
@@ -35,7 +28,7 @@ async def login():
 
 def _check_session_sync(session_hash: str) -> bool:
     # Предполагаемая схема: sessions(session_hash text, expires_at timestamptz)
-    with psycopg.connect(DATABASE_URL, connect_timeout=5) as conn:
+    with connect() as conn:
         row = conn.execute(
             "SELECT 1 FROM sessions WHERE session_hash = %s AND expires_at > now()",
             (session_hash,),
@@ -79,6 +72,9 @@ async def verify_session(
     },
 )
 async def send_file(request: Request, session_hash: str = Depends(verify_session)) -> dict:
+    if not BOARD_AGENT_URL or not BOARD_AGENT_TOKEN:
+        raise HTTPException(status_code=503, detail="Подключение к агенту ПЛИС не настроено")
+
     content_length = request.headers.get("content-length")
     if not content_length or not content_length.isdigit():
         raise HTTPException(status_code=411, detail="Заголовок Content-Length обязателен")
@@ -111,7 +107,6 @@ async def send_file(request: Request, session_hash: str = Depends(verify_session
     finally:
         await form.close()
 
-    # Отправка на BOARD_AGENT (эндпоинт /upload — предположение, см. примечание)
     timeout = httpx.Timeout(BOARD_AGENT_READ_TIMEOUT, connect=BOARD_AGENT_CONNECT_TIMEOUT)
     try:
         async with httpx.AsyncClient(timeout=timeout) as client:
@@ -129,4 +124,4 @@ async def send_file(request: Request, session_hash: str = Depends(verify_session
     if resp.status_code >= 400:
         raise HTTPException(status_code=502, detail=f"BOARD_AGENT вернул ошибку {resp.status_code}")
 
-    return {"filename": filename, "size_bytes": size, "board_id": BOARD_ID, "status": "Отправлен на плату"}
+    return {"filename": filename, "size_bytes": size, "board_id": BOARD_ID, "status": "Отправлен на плату" }
