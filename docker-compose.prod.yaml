@@ -14,9 +14,13 @@ services:
     ports: !reset []
     expose:
       - "${APP_PORT}"
-    # Код уже внутри образа, папки с компьютера не подключаем
-    volumes: !reset []
+    volumes: !override
+      - ./backend/board-config:/board-config:ro
     restart: unless-stopped
 
+  migrate:
+    volumes: !reset []
+
   db:
+    ports: !reset []
     restart: unless-stopped

@@ -1,6 +1,30 @@
 include:
   - db/compose.yaml
 
+x-board-environment: &board-environment
+  DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:${POSTGRES_PORT}/${POSTGRES_DB}
+  HOSTS_FILE: /board-config/hosts.json
+  CELERY_BROKER_URL: redis://redis:6379/0
+  BOARD_HEALTH_INTERVAL: ${BOARD_HEALTH_INTERVAL:-30}
+  BOARD_HEALTH_FAILURE_LIMIT: ${BOARD_HEALTH_FAILURE_LIMIT:-3}
+
+x-board-task: &board-task
+  build:
+    context: ./backend
+    target: prod
+    args:
+      PYTHON_VERSION: ${PYTHON_VERSION}
+  environment: *board-environment
+  volumes:
+    - ./backend/board-config:/board-config:ro
+  networks: [default, redis_private]
+  depends_on:
+    redis:
+      condition: service_healthy
+    migrate:
+      condition: service_completed_successfully
+  restart: unless-stopped
+
 services:
   backend:
     build:
@@ -13,20 +37,41 @@ services:
     ports:
       - "${WEB_PORT}:${APP_PORT}"
     environment:
+      <<: *board-environment
       APP_HOST: ${APP_HOST}
       APP_PORT: ${APP_PORT}
-      # "db" - имя сервиса ниже, внутри сети compose оно работает как адрес хоста
-      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:${POSTGRES_PORT}/${POSTGRES_DB}
+      BOARD_AGENT_URL: ${BOARD_AGENT_URL:-}
+      BOARD_AGENT_TOKEN: ${BOARD_AGENT_TOKEN:-}
       SMOKE_BASE_URL: http://backend:${APP_PORT}
     volumes:
       # Код с компьютера виден в контейнере, пересобирать образ после правок не нужно
       - ./backend/app:/code/app
       - ./backend/tests:/code/tests
+      - ./backend/board-config:/board-config:ro
     depends_on:
       db:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
+
+  redis:
+    image: redis:7-alpine
+    networks: [redis_private]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  board-worker:
+    <<: *board-task
+    command: celery -A app.routes.board_dialog:celery_app worker --loglevel=INFO --concurrency=2
+
+  board-beat:
+    <<: *board-task
+    networks: [redis_private]
+    command: celery -A app.routes.board_dialog:celery_app beat --loglevel=INFO --schedule=/tmp/celerybeat-schedule
 
   db:
     image: postgres:${POSTGRES_VERSION}
@@ -41,12 +86,15 @@ services:
     volumes:
       # Данные БД переживают пересоздание контейнера
       - postgres_data:/var/lib/postgresql/data
-      - ./db/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: ${DB_HEALTHCHECK_INTERVAL}
       timeout: ${DB_HEALTHCHECK_TIMEOUT}
       retries: ${DB_HEALTHCHECK_RETRIES}
 
 volumes:
   postgres_data:
+
+networks:
+  redis_private:
+    internal: true
