@@ -68,9 +68,9 @@ def list_boards(
     try:
         with connect() as conn:
             rows = conn.execute(
-                "SELECT b.board_id, b.board_code, b.is_available, (b.is_enabled AND s.is_enabled), "
+                "SELECT b.board_id, b.board_code, b.is_available, "
                 "bs.user_id, GREATEST(0, EXTRACT(EPOCH FROM (bs.expires_at - now()))::int) "
-                "FROM boards b JOIN computer_stations s ON s.station_id = b.station_id "
+                "FROM boards b "
                 # просроченная сессия платой уже не владеет, даже если строка ещё лежит в таблице
                 "LEFT JOIN board_sessions bs ON bs.board_id = b.board_id AND bs.expires_at > now() "
                 "ORDER BY b.board_id OFFSET %s LIMIT %s",
@@ -81,9 +81,9 @@ def list_boards(
 
     hosts = configured_boards()
     result = []
-    for board_id, board_code, available, can_connect, holder_id, seconds_left in rows:
+    for board_id, board_code, available, holder_id, seconds_left in rows:
         enabled = hosts.get(board_code, {}).get("is_enabled") is True
-        if not (enabled and available and can_connect):
+        if not (enabled and available):
             state = "unavailable"
         elif holder_id is None:
             state = "free"
@@ -123,8 +123,8 @@ def connect_board(
     try:
         with connect() as conn:  # всё внутри — одна транзакция
             board = conn.execute(
-                "SELECT b.board_code, (b.is_enabled AND s.is_enabled AND b.is_available) "
-                "FROM boards b JOIN computer_stations s ON s.station_id = b.station_id "
+                "SELECT b.board_code, b.is_available "
+                "FROM boards b "
                 "WHERE b.board_id = %s FOR UPDATE OF b",
                 (board_id,),
             ).fetchone()

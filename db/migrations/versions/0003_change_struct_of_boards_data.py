@@ -14,11 +14,9 @@ depends_on = None
 
 
 def upgrade() -> None:
-    pass
+    op.execute("ALTER TABLE public.boards DROP COLUMN IF EXISTS station_id")
+    op.execute("DROP TABLE IF EXISTS public.computer_stations")
 
 
 def downgrade() -> None:
-    op.execute("""
-        DROP TABLE IF EXISTS public.computer_stations CASCADE;
-        ALTER TABLE public.boards DROP COLUMN station_id;
-        """)
+    raise RuntimeError("Откат 0003 требует резервной копии данных станций")

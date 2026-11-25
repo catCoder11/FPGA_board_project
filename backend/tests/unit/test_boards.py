@@ -123,12 +123,12 @@ def test_requires_login(method, path):
 
 def test_list_boards_statuses(monkeypatch):
     rows = [
-        (1, "board-1", True, True, None, 0),    # свободна (GREATEST в SQL даёт 0, а не NULL)
-        (2, "board-2", True, True, 7, 1800),    # занята другим
-        (3, "board-3", True, True, 1, 600),     # занята мной
-        (4, "board-4", False, True, None, 0),   # включена, но недоступна
-        (5, "board-5", True, True, None, 0),    # отключена, но доступна по БД
-        (6, "board-6", True, True, None, 0),    # не указана в hosts.json
+        (1, "board-1", True, None, 0),    # свободна (GREATEST в SQL даёт 0, а не NULL)
+        (2, "board-2", True, 7, 1800),    # занята другим
+        (3, "board-3", True, 1, 600),     # занята мной
+        (4, "board-4", False, None, 0),   # включена, но недоступна
+        (5, "board-5", True, None, 0),    # отключена, но доступна по БД
+        (6, "board-6", True, None, 0),    # не указана в hosts.json
     ]
     use_db(monkeypatch, deps, logged_in())
     use_db(monkeypatch, boards, FakeConn(lambda sql, params: rows))

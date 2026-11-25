@@ -84,7 +84,7 @@ def get_board_session(user: CurrentUser = Depends(get_current_user)) -> ActiveBo
                 "SELECT bs.board_session_id, bs.board_id, b.board_code, bs.expires_at, "
                 "EXTRACT(EPOCH FROM (bs.expires_at - now()))::int "
                 "FROM board_sessions bs JOIN boards b ON b.board_id = bs.board_id "
-                "WHERE bs.user_id = %s AND bs.expires_at > now() AND b.is_enabled AND b.is_available",
+                "WHERE bs.user_id = %s AND bs.expires_at > now() AND b.is_available",
                 (user.user_id,),
             ).fetchone()
     except psycopg.Error:

@@ -283,13 +283,13 @@ def refresh_board_session(
 def open_board_session(board_code: str, user_id: int = Depends(get_site_user_id)):
     with connect() as conn:
         board = conn.execute(
-            """SELECT board_id, is_enabled, is_available FROM boards
+            """SELECT board_id, is_available FROM boards
                WHERE board_code = %s FOR UPDATE""",
             (board_code,),
         ).fetchone()
-        if board is None or not board[1]:
+        if board is None:
             raise HTTPException(404, "Плата не найдена")
-        if not board[2]:
+        if not board[1]:
             raise HTTPException(503, "Плата сейчас недоступна")
         board_id = board[0]
         expired = conn.execute(
